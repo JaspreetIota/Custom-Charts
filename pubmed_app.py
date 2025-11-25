@@ -5,6 +5,7 @@ from io import BytesIO
 import plotly.express as px
 
 EXCEL_PATH = "uat_issues.xlsx"
+MEDIA_FOLDER = "media"
 
 CLIENT_COLUMNS = ["Portfolio Demo", "Diabetes", "TMW", "MDR", "EDL", "STF", "IPRG Demo"]
 
@@ -47,7 +48,10 @@ def save_excel(df_main, df_arch):
 
 # ------------------------ CONFIG ------------------------
 st.set_page_config(page_title="UAT & Architecture Bug Tracker", layout="wide")
-st.title("🧪 Bug Tracker Dashboard with Row-wise Media Uploads")
+st.title("🧪 Bug Tracker Dashboard with Media Uploads & Custom Charts")
+
+# Ensure media folder exists
+os.makedirs(MEDIA_FOLDER, exist_ok=True)
 
 # Load data
 df_main, df_arch = load_excel()
@@ -79,26 +83,26 @@ if page == "📊 Dashboard":
         columns_to_show = st.multiselect("Select columns to display", df_filtered.columns.tolist(), default=df_filtered.columns.tolist())
         st.dataframe(df_filtered[columns_to_show], use_container_width=True)
 
-        # Show images and videos inline
-        st.subheader("Media Previews")
+        # Media preview per row on-demand
+        st.subheader("Media Preview per Row")
         for idx, row in df_filtered.iterrows():
-            st.markdown(f"**S.No:** {row.get('Sno.', '')}  |  **Issue:** {row.get('Issue', '')}")
-            
-            # Images
-            if "image" in row and pd.notna(row["image"]):
-                images = str(row["image"]).split("|")
-                for img in images:
-                    if img.strip():
-                        st.image(img.strip(), caption="Screenshot", use_column_width=True)
+            with st.expander(f"S.No: {row.get('Sno.', '')} | Issue: {row.get('Issue', '')}"):
+                if "image" in row and pd.notna(row["image"]):
+                    for img in str(row["image"]).split("|"):
+                        img = img.strip()
+                        if img:
+                            img_path = os.path.join(MEDIA_FOLDER, img)
+                            if os.path.exists(img_path):
+                                st.image(img_path, caption=img, use_column_width=True)
+                if "video" in row and pd.notna(row["video"]):
+                    for vid in str(row["video"]).split("|"):
+                        vid = vid.strip()
+                        if vid:
+                            vid_path = os.path.join(MEDIA_FOLDER, vid)
+                            if os.path.exists(vid_path):
+                                st.video(vid_path)
 
-            # Videos
-            if "video" in row and pd.notna(row["video"]):
-                videos = str(row["video"]).split("|")
-                for vid in videos:
-                    if vid.strip():
-                        st.video(vid.strip())
-
-        # Predefined Charts (Safe)
+        # Predefined Charts
         st.subheader("Predefined Charts")
         if "Type" in df_filtered.columns and not df_filtered.empty:
             type_counts = df_filtered['Type'].value_counts().reset_index()
@@ -107,16 +111,23 @@ if page == "📊 Dashboard":
                 fig_type = px.bar(type_counts, x='Type', y='Count', title='Issues by Type')
                 st.plotly_chart(fig_type, use_container_width=True)
 
-        if CLIENT_COLUMNS:
-            for client in CLIENT_COLUMNS:
-                if client in df_filtered.columns:
-                    client_counts = df_filtered[client].value_counts().reset_index()
-                    client_counts.columns = ['Status', 'Count']
-                    if not client_counts.empty:
-                        fig_client = px.pie(client_counts, names='Status', values='Count', title=f"{client} Status")
-                        st.plotly_chart(fig_client, use_container_width=True)
+        # Custom Charts
+        st.subheader("Custom Chart")
+        chart_col = st.selectbox("Select column for chart", df_filtered.columns.tolist(), key="uat_chart_col")
+        chart_type = st.selectbox("Select chart type", ["Bar", "Pie", "Histogram"], key="uat_chart_type")
+        if chart_col:
+            try:
+                if chart_type == "Bar":
+                    fig = px.bar(df_filtered, x=chart_col, title=f"Bar Chart: {chart_col}")
+                elif chart_type == "Pie":
+                    fig = px.pie(df_filtered, names=chart_col, title=f"Pie Chart: {chart_col}")
+                elif chart_type == "Histogram":
+                    fig = px.histogram(df_filtered, x=chart_col, title=f"Histogram: {chart_col}")
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Cannot generate chart for column '{chart_col}': {e}")
 
-    else:
+    else:  # Architecture Issues Dashboard
         st.header("🏗️ Architecture Issues Dashboard")
         type_options = df_arch["Type"].dropna().unique().tolist() if "Type" in df_arch.columns else []
         selected_types = st.multiselect("Filter by Type", type_options, default=type_options)
@@ -129,26 +140,27 @@ if page == "📊 Dashboard":
         if selected_status:
             df_filtered = df_filtered[df_filtered["Status"].isin(selected_status)]
 
-        # Column filter
         columns_to_show = st.multiselect("Select columns to display", df_filtered.columns.tolist(), default=df_filtered.columns.tolist())
         st.dataframe(df_filtered[columns_to_show], use_container_width=True)
 
-        # Show media inline
-        st.subheader("Media Previews")
+        # Media preview per row on-demand
+        st.subheader("Media Preview per Row")
         for idx, row in df_filtered.iterrows():
-            st.markdown(f"**S.No:** {row.get('Sno.', '')}  |  **Issue:** {row.get('Issue', '')}")
-            # Images
-            if "image" in row and pd.notna(row["image"]):
-                images = str(row["image"]).split("|")
-                for img in images:
-                    if img.strip():
-                        st.image(img.strip(), caption="Screenshot", use_column_width=True)
-            # Videos
-            if "video" in row and pd.notna(row["video"]):
-                videos = str(row["video"]).split("|")
-                for vid in videos:
-                    if vid.strip():
-                        st.video(vid.strip())
+            with st.expander(f"S.No: {row.get('Sno.', '')} | Issue: {row.get('Issue', '')}"):
+                if "image" in row and pd.notna(row["image"]):
+                    for img in str(row["image"]).split("|"):
+                        img = img.strip()
+                        if img:
+                            img_path = os.path.join(MEDIA_FOLDER, img)
+                            if os.path.exists(img_path):
+                                st.image(img_path, caption=img, use_column_width=True)
+                if "video" in row and pd.notna(row["video"]):
+                    for vid in str(row["video"]).split("|"):
+                        vid = vid.strip()
+                        if vid:
+                            vid_path = os.path.join(MEDIA_FOLDER, vid)
+                            if os.path.exists(vid_path):
+                                st.video(vid_path)
 
         # Predefined Charts
         st.subheader("Predefined Charts")
@@ -165,10 +177,25 @@ if page == "📊 Dashboard":
                 fig_status = px.pie(status_counts, names='Status', values='Count', title='Architecture Issues Status')
                 st.plotly_chart(fig_status, use_container_width=True)
 
-# ------------------------ EDITABLE TABLES WITH ROW-WISE MEDIA UPLOAD ------------------------
+        # Custom Charts
+        st.subheader("Custom Chart")
+        chart_col = st.selectbox("Select column for chart", df_filtered.columns.tolist(), key="arch_chart_col")
+        chart_type = st.selectbox("Select chart type", ["Bar", "Pie", "Histogram"], key="arch_chart_type")
+        if chart_col:
+            try:
+                if chart_type == "Bar":
+                    fig = px.bar(df_filtered, x=chart_col, title=f"Bar Chart: {chart_col}")
+                elif chart_type == "Pie":
+                    fig = px.pie(df_filtered, names=chart_col, title=f"Pie Chart: {chart_col}")
+                elif chart_type == "Histogram":
+                    fig = px.histogram(df_filtered, x=chart_col, title=f"Histogram: {chart_col}")
+                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Cannot generate chart for column '{chart_col}': {e}")
+
+# ------------------------ EDITABLE SHEETS ------------------------
 elif page == "📋 UAT Issues (Editable)":
     st.header("📋 Edit UAT Issues")
-
     edited_main = st.experimental_data_editor(df_main, num_rows="dynamic", use_container_width=True)
 
     st.subheader("Upload Media for Rows")
@@ -177,13 +204,15 @@ elif page == "📋 UAT Issues (Editable)":
         img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"img_{idx}")
         vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"vid_{idx}")
         if img_file:
-            edited_main.at[idx, "image"] = img_file.name
-            with open(os.path.join("media", img_file.name), "wb") as f:
+            path = os.path.join(MEDIA_FOLDER, img_file.name)
+            with open(path, "wb") as f:
                 f.write(img_file.getbuffer())
+            edited_main.at[idx, "image"] = img_file.name
         if vid_file:
-            edited_main.at[idx, "video"] = vid_file.name
-            with open(os.path.join("media", vid_file.name), "wb") as f:
+            path = os.path.join(MEDIA_FOLDER, vid_file.name)
+            with open(path, "wb") as f:
                 f.write(vid_file.getbuffer())
+            edited_main.at[idx, "video"] = vid_file.name
 
     if st.button("💾 Save UAT Sheet"):
         save_excel(edited_main, df_arch)
@@ -193,7 +222,6 @@ elif page == "📋 UAT Issues (Editable)":
 
 elif page == "🏗️ Architecture Issues (Editable)":
     st.header("🏗️ Edit Architecture Issues")
-
     edited_arch = st.experimental_data_editor(df_arch, num_rows="dynamic", use_container_width=True)
 
     st.subheader("Upload Media for Rows")
@@ -202,13 +230,15 @@ elif page == "🏗️ Architecture Issues (Editable)":
         img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"arch_img_{idx}")
         vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"arch_vid_{idx}")
         if img_file:
-            edited_arch.at[idx, "image"] = img_file.name
-            with open(os.path.join("media", img_file.name), "wb") as f:
+            path = os.path.join(MEDIA_FOLDER, img_file.name)
+            with open(path, "wb") as f:
                 f.write(img_file.getbuffer())
+            edited_arch.at[idx, "image"] = img_file.name
         if vid_file:
-            edited_arch.at[idx, "video"] = vid_file.name
-            with open(os.path.join("media", vid_file.name), "wb") as f:
+            path = os.path.join(MEDIA_FOLDER, vid_file.name)
+            with open(path, "wb") as f:
                 f.write(vid_file.getbuffer())
+            edited_arch.at[idx, "video"] = vid_file.name
 
     if st.button("💾 Save Architecture Sheet"):
         save_excel(df_main, edited_arch)
