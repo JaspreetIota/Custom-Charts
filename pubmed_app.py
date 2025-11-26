@@ -4,6 +4,25 @@ import os
 from io import BytesIO
 import plotly.express as px
 
+# ---------- THEME TOGGLE ----------
+if "theme" not in st.session_state:
+    st.session_state.theme = "light"
+
+theme_choice = st.sidebar.radio("🌗 Select Theme", ["Light", "Dark"],
+                                index=0 if st.session_state.theme=="light" else 1)
+st.session_state.theme = theme_choice
+
+# Apply CSS for dark mode
+if st.session_state.theme == "dark":
+    st.markdown("""
+        <style>
+        /* Dark mode styles */
+        .reportview-container {background-color: #0E1117; color: #FAFAFA;}
+        .stDataFrame div.row_heading, .stDataFrame th, .stDataFrame td {color: #FAFAFA;}
+        .streamlit-expanderHeader, h1, h2, h3, h4, h5, h6 {color: #FAFAFA;}
+        </style>
+        """, unsafe_allow_html=True)
+
 EXCEL_PATH = "uat_issues.xlsx"
 MEDIA_FOLDER = "media"
 FEEDBACK_PATH = "user_feedback.xlsx"
@@ -221,35 +240,3 @@ elif page == "✉️ User Feedback":
 
     st.subheader("All Feedbacks")
     st.dataframe(df_feedback, use_container_width=True)
-
-# ---------- THEME TOGGLE ----------
-if "theme" not in st.session_state:
-    st.session_state.theme = "light"  # default theme
-
-theme_choice = st.sidebar.radio("🌗 Select Theme", ["Light", "Dark"], index=0 if st.session_state.theme=="light" else 1)
-
-st.session_state.theme = theme_choice
-
-# Apply basic dark mode CSS
-if st.session_state.theme == "dark":
-    st.markdown(
-        """
-        <style>
-        /* Background */
-        .reportview-container {
-            background-color: #0E1117;
-            color: #FAFAFA;
-        }
-        /* Table and text */
-        .stDataFrame div.row_heading, .stDataFrame th, .stDataFrame td {
-            color: #FAFAFA;
-        }
-        /* Expanders and headers */
-        .streamlit-expanderHeader, .css-10trblm, h1, h2, h3, h4, h5, h6 {
-            color: #FAFAFA;
-        }
-        </style>
-        """, unsafe_allow_html=True
-    )
-else:
-    st.markdown("", unsafe_allow_html=True)
