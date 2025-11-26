@@ -54,7 +54,7 @@ def save_feedback(df_fb):
 
 # ------------------------ APP CONFIG ------------------------
 st.set_page_config(page_title="UAT & Architecture Bug Tracker", layout="wide")
-st.title("🧪 Bug Tracker Dashboard with Media Uploads & Feedbacks")
+st.title("🧪 Noether IP Status")
 
 df_main, df_arch = load_excel()
 df_feedback = load_feedback()
