@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import io
 from io import BytesIO
 import plotly.express as px
 
@@ -271,21 +270,25 @@ elif page == "✉️ User Feedback":
 
     # Editable table for previously submitted feedback
     st.subheader("Edit Submitted Feedback")
-    edited_feedback = st.experimental_data_editor(df_feedback, num_rows="dynamic", use_container_width=True)
+    edited_feedback = st.experimental_data_editor(df_feedback, num_rows="dynamic", use_container_width=True
     
     # Save button
     if st.button("💾 Save Feedback Changes"):
         save_feedback(edited_feedback)
-        st.success("Feedback edits saved successfully!")
+        st.success("Feedback edits saved successfully!"
 
 # Save feedback edits to in-memory Excel
-excel_buffer = io.BytesIO()
-edited_feedback.to_excel(excel_buffer, index=False)
+excel_buffer = BytesIO()
+# Use edited_feedback if exists, otherwise fallback to original df_feedback
+(df_feedback if edited_feedback is None else edited_feedback).to_excel(excel_buffer, index=False)
 excel_buffer.seek(0)
 
+# Download feedback Excel
+download_buffer = BytesIO()
+# Use edited_feedback if exists, otherwise fallback to original df_feedback
+(df_feedback if edited_feedback is None else edited_feedback).to_excel(download_buffer, index=False)
 st.download_button(
     "⬇ Download Feedback Excel",
-    data=excel_buffer,
-    file_name="user_feedback.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    data=download_buffer.getvalue(),
+    file_name="user_feedback.xlsx"
 )
