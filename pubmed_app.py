@@ -277,8 +277,7 @@ elif page == "🏗️ Architecture Issues (Editable)":
         st.session_state.df_arch = edited_arch
         save_excel(st.session_state.df_main, st.session_state.df_arch)
         st.success("Architecture Issues saved!")
-
-# Media upload per row
+    # Media upload per row
 for idx in edited_arch.index:
     col1, col2 = st.columns(2)
 
