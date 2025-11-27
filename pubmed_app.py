@@ -4,15 +4,15 @@ import os
 from io import BytesIO
 import plotly.express as px
 
-# ------------------------ CONFIG ------------------------
 EXCEL_PATH = "uat_issues.xlsx"
 MEDIA_FOLDER = "media"
 FEEDBACK_PATH = "user_feedback.xlsx"
+
 CLIENT_COLUMNS = ["Portfolio Demo", "Diabetes", "TMW", "MDR", "EDL", "STF", "IPRG Demo"]
 
+# ------------------------ UTILITIES ------------------------
 os.makedirs(MEDIA_FOLDER, exist_ok=True)
 
-# ------------------------ UTILITIES ------------------------
 @st.cache_data(ttl=5)
 def load_excel():
     if not os.path.exists(EXCEL_PATH):
@@ -59,8 +59,7 @@ st.title("🧪 Noether IP Status")
 df_main, df_arch = load_excel()
 df_feedback = load_feedback()
 
-page = st.sidebar.radio("Select Page", ["📊 Dashboard", "📋 UAT Issues (Editable)", 
-                                        "🏗️ Architecture Issues (Editable)", "✉️ User Feedback"])
+page = st.sidebar.radio("Select Page", ["📊 Dashboard", "📋 UAT Issues (Editable)", "🏗️ Architecture Issues (Editable)", "✉️ User Feedback"])
 
 # ------------------------ DASHBOARD ------------------------
 if page == "📊 Dashboard":
@@ -148,44 +147,36 @@ if page == "📊 Dashboard":
         except Exception as e:
             st.warning(f"Cannot generate chart for column '{chart_col}': {e}")
 
-# ------------------------ FLOATING SAVE BUTTON ------------------------
-def floating_save_button():
+# ------------------------ EDITABLE SHEETS WITH SAVE BUTTON ------------------------
+elif page == "📋 UAT Issues (Editable)":
+    st.header("📋 Edit UAT Issues")
+
+    # Sticky Save button
     st.markdown(
         """
         <style>
-        .floating-toolbar {
-            position: fixed;
-            top: 60px;
-            Right: 60px;
-            z-index: 9999;
-        }
-        .floating-toolbar button {
-            margin: 5px;
-            padding: 8px 15px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .floating-toolbar button:hover {
-            background-color: #0056b3;
+        .sticky-save {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: white;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
         }
         </style>
-        <div class="floating-toolbar">
-            <button id="saveBtn">💾 Save</button>
-        </div>
         """, unsafe_allow_html=True
     )
 
-# ------------------------ EDITABLE PAGES ------------------------
-if page == "📋 UAT Issues (Editable)":
-    st.header("📋 Edit UAT Issues")
+    save_col = st.container()
+    with save_col:
+        st.markdown('<div class="sticky-save">', unsafe_allow_html=True)
+        save_clicked = st.button("💾 Save Changes")
+        st.markdown('</div>', unsafe_allow_html=True)
+
     edited_main = st.experimental_data_editor(df_main, num_rows="dynamic", use_container_width=True)
 
-    # Media upload per row
+    # Media upload for each row
     for idx in edited_main.index:
-        st.markdown(f"**Row {idx+1}: {edited_main.at[idx,'Issue']}**")
         img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"img_{idx}")
         vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"vid_{idx}")
         if img_file:
@@ -203,19 +194,39 @@ if page == "📋 UAT Issues (Editable)":
             vids = list(set(current_vids.split("|") + [vid_file.name]))
             edited_main.at[idx,"video"] = "|".join([v for v in vids if v])
 
-    floating_save_button()
-    save_clicked = st.button("💾 Save Changes", key="uat_save_button")
     if save_clicked:
         save_excel(edited_main, df_arch)
-        st.success("UAT Issues saved permanently!")
+        st.success("UAT Issues saved successfully!")
 
 elif page == "🏗️ Architecture Issues (Editable)":
     st.header("🏗️ Edit Architecture Issues")
+
+    # Sticky Save button
+    st.markdown(
+        """
+        <style>
+        .sticky-save {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: white;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+
+    save_col = st.container()
+    with save_col:
+        st.markdown('<div class="sticky-save">', unsafe_allow_html=True)
+        save_clicked = st.button("💾 Save Changes")
+        st.markdown('</div>', unsafe_allow_html=True)
+
     edited_arch = st.experimental_data_editor(df_arch, num_rows="dynamic", use_container_width=True)
 
-    # Media upload per row
+    # Media upload for each row
     for idx in edited_arch.index:
-        st.markdown(f"**Row {idx+1}: {edited_arch.at[idx,'Issue']}**")
         img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"arch_img_{idx}")
         vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"arch_vid_{idx}")
         if img_file:
@@ -233,17 +244,15 @@ elif page == "🏗️ Architecture Issues (Editable)":
             vids = list(set(current_vids.split("|") + [vid_file.name]))
             edited_arch.at[idx,"video"] = "|".join([v for v in vids if v])
 
-    floating_save_button()
-    save_clicked = st.button("💾 Save Changes", key="arch_save_button")
     if save_clicked:
         save_excel(df_main, edited_arch)
-        st.success("Architecture Issues saved permanently!")
+        st.success("Architecture Issues saved successfully!")
 
 # ------------------------ USER FEEDBACK ------------------------
 elif page == "✉️ User Feedback":
     st.header("✉️ User Feedback")
-
-    # Feedback submission form
+    
+    # Feedback submission form (same as before)
     with st.form("feedback_form"):
         name = st.text_input("Name")
         email = st.text_input("Email")
@@ -263,9 +272,10 @@ elif page == "✉️ User Feedback":
     st.subheader("Edit Submitted Feedback")
     edited_feedback = st.experimental_data_editor(df_feedback, num_rows="dynamic", use_container_width=True)
     
-    # Auto save feedback edits
-    save_feedback(edited_feedback)
-    st.success("All edits saved permanently!")
+    # Save button
+    if st.button("💾 Save Feedback Changes"):
+        save_feedback(edited_feedback)
+        st.success("Feedback edits saved successfully!")
 
     # Download feedback Excel
     st.download_button("⬇ Download Feedback Excel", data=open(FEEDBACK_PATH, "rb").read(), file_name="user_feedback.xlsx")
