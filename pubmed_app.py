@@ -148,6 +148,25 @@ if page == "📊 Dashboard":
             st.warning(f"Cannot generate chart for column '{chart_col}': {e}")
 
 # ------------------------ EDITABLE SHEETS WITH SAVE BUTTON ------------------------
+# ------------------------ Excel Upload ------------------------
+uploaded_file = st.file_uploader("Upload Excel to update tables", type=["xlsx"])
+if uploaded_file:
+    try:
+        xls = pd.ExcelFile(uploaded_file)
+        if "uat_issues" in [s.lower() for s in xls.sheet_names]:
+            df_main = pd.read_excel(uploaded_file, sheet_name="uat_issues")
+        if "architecture_issues" in [s.lower() for s in xls.sheet_names]:
+            df_arch = pd.read_excel(uploaded_file, sheet_name="architecture_issues")
+        st.success("Excel loaded successfully! Tables updated.")
+
+        # ------------------------ Validate Uploaded Excel ------------------------
+        required_columns_main = ["Sno.","Date","Issue", *CLIENT_COLUMNS]
+        if not all(col in df_main.columns for col in required_columns_main):
+            st.warning("Uploaded UAT sheet is missing required columns!")
+
+    except Exception as e:
+        st.error(f"Error loading Excel: {e}")
+        
 elif page == "📋 UAT Issues (Editable)":
     st.header("📋 Edit UAT Issues")
 
