@@ -156,7 +156,7 @@ def floating_save_button():
         .floating-toolbar {
             position: fixed;
             top: 20px;
-            Left: 20px;
+            Right: 20px;
             z-index: 9999;
         }
         .floating-toolbar button {
