@@ -17,6 +17,7 @@ os.makedirs(MEDIA_FOLDER, exist_ok=True)
 @st.cache_data(ttl=5)
 def load_excel():
     if not os.path.exists(EXCEL_PATH):
+        st.warning(f"Excel file {EXCEL_PATH} not found. Creating empty sheets.")
         df_main = pd.DataFrame(columns=["Sno.","Date","Repetitive Count","Repetitive Dates",
                                         "Type","Issue", *CLIENT_COLUMNS, "image","video","remarks","dev status"])
         df_arch = pd.DataFrame(columns=["Sno.","Date","Repetitive Count","Repetitive Dates",
@@ -24,8 +25,16 @@ def load_excel():
         return df_main, df_arch
     xls = pd.ExcelFile(EXCEL_PATH)
     sheet_names = [s.lower() for s in xls.sheet_names]
-    df_main = pd.read_excel(EXCEL_PATH, sheet_name="uat_issues") if "uat_issues" in sheet_names else pd.DataFrame(columns=["Sno.","Date","Repetitive Count","Repetitive Dates","Type","Issue", *CLIENT_COLUMNS, "image","video","remarks","dev status"])
-    df_arch = pd.read_excel(EXCEL_PATH, sheet_name="architecture_issues") if "architecture_issues" in sheet_names else pd.DataFrame(columns=["Sno.","Date","Repetitive Count","Repetitive Dates","Type","Issue","Status","image","video","remarks","dev status"])
+    if "uat_issues" in sheet_names:
+        df_main = pd.read_excel(EXCEL_PATH, sheet_name=xls.sheet_names[sheet_names.index("uat_issues")])
+    else:
+        df_main = pd.DataFrame(columns=["Sno.","Date","Repetitive Count","Repetitive Dates",
+                                        "Type","Issue", *CLIENT_COLUMNS, "image","video","remarks","dev status"])
+    if "architecture_issues" in sheet_names:
+        df_arch = pd.read_excel(EXCEL_PATH, sheet_name=xls.sheet_names[sheet_names.index("architecture_issues")])
+    else:
+        df_arch = pd.DataFrame(columns=["Sno.","Date","Repetitive Count","Repetitive Dates",
+                                        "Type","Issue","Status","image","video","remarks","dev status"])
     df_main.columns = df_main.columns.str.strip()
     df_arch.columns = df_arch.columns.str.strip()
     return df_main, df_arch
@@ -55,92 +64,240 @@ page = st.sidebar.radio("Select Page", ["📊 Dashboard", "📋 UAT Issues (Edit
 
 # ------------------------ DASHBOARD ------------------------
 if page == "📊 Dashboard":
-    st.header("📊 Dashboard")
-    # Existing dashboard code with Plotly charts etc.
-    st.info("Dashboard code goes here...")  # Keep your existing dashboard code
+    dashboard_type = st.radio("Choose Dashboard", ["UAT Issues", "Architecture Issues"])
 
-# ------------------------ UAT ISSUES ------------------------
-elif page == "📋 UAT Issues (Editable)":
-    st.header("📋 Edit UAT Issues")
+    if dashboard_type == "UAT Issues":
+        st.header("📊 UAT Issues Dashboard")
+        df = df_main.copy()
+        # Filters
+        type_options = df["Type"].dropna().unique().tolist() if "Type" in df.columns else []
+        selected_types = st.multiselect("Filter by Type", type_options, default=type_options)
+        client_options = [c for c in CLIENT_COLUMNS if c in df.columns]
+        selected_clients = st.multiselect("Filter by Resolved Clients", client_options, default=client_options)
 
-    # Build AgGrid options
-    gb = GridOptionsBuilder.from_dataframe(df_main)
-    gb.configure_default_column(editable=True, filter=True, sortable=True)
-    gb.configure_selection('single')
-    grid_options = gb.build()
+        if selected_types:
+            df = df[df["Type"].isin(selected_types)]
+        if selected_clients:
+            df = df[df[selected_clients].eq("Yes").all(axis=1)]
 
-    # Display editable grid
+    else:
+        st.header("🏗️ Architecture Issues Dashboard")
+        df = df_arch.copy()
+        type_options = df["Type"].dropna().unique().tolist() if "Type" in df.columns else []
+        selected_types = st.multiselect("Filter by Type", type_options, default=type_options)
+        status_options = df["Status"].dropna().unique().tolist() if "Status" in df.columns else []
+        selected_status = st.multiselect("Filter by Status", status_options, default=status_options)
+        if selected_types:
+            df = df[df["Type"].isin(selected_types)]
+        if selected_status:
+            df = df[df["Status"].isin(selected_status)]
+
+    # Column selection
+    columns_to_show = st.multiselect("Select columns to display", df.columns.tolist(), default=df.columns.tolist())
+    df_display = df[columns_to_show] if columns_to_show else df
+    st.dataframe(df_display, use_container_width=True)
+
+    # Media Viewer
+    with st.expander("📂 Media Viewer (Expand to see all images/videos)"):
+        for idx, row in df.iterrows():
+            title = f"S.No: {row.get('Sno.', '')} | Issue: {row.get('Issue','')}"
+            st.markdown(f"**{title}**")
+            # Images
+            images = list(set(str(row.get("image","")).split("|")))
+            for img in images:
+                img = img.strip()
+                if img:
+                    img_path = os.path.join(MEDIA_FOLDER, img)
+                    if os.path.exists(img_path):
+                        st.image(img_path, caption=img, use_column_width=True)
+            # Videos
+            videos = list(set(str(row.get("video","")).split("|")))
+            for vid in videos:
+                vid = vid.strip()
+                if vid:
+                    vid_path = os.path.join(MEDIA_FOLDER, vid)
+                    if os.path.exists(vid_path):
+                        st.video(vid_path)
+
+    # Predefined charts
+    st.subheader("Predefined Charts")
+    if "Type" in df.columns and not df.empty:
+        type_counts = df['Type'].value_counts().reset_index()
+        type_counts.columns = ['Type','Count']
+        fig = px.bar(type_counts, x='Type', y='Count', title='Issues by Type')
+        st.plotly_chart(fig, use_container_width=True)
+    if "Status" in df.columns and not df.empty:
+        status_counts = df['Status'].value_counts().reset_index()
+        status_counts.columns = ['Status','Count']
+        fig = px.pie(status_counts, names='Status', values='Count', title='Status Counts')
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Custom Charts
+    st.subheader("Custom Chart")
+    chart_col = st.selectbox("Select column for chart", df.columns.tolist(), key=f"{dashboard_type}_chart_col")
+    chart_type = st.selectbox("Select chart type", ["Bar","Pie","Histogram"], key=f"{dashboard_type}_chart_type")
+    if chart_col:
+        try:
+            if chart_type == "Bar":
+                fig = px.bar(df, x=chart_col, title=f"Bar Chart: {chart_col}")
+            elif chart_type == "Pie":
+                fig = px.pie(df, names=chart_col, title=f"Pie Chart: {chart_col}")
+            elif chart_type == "Histogram":
+                fig = px.histogram(df, x=chart_col, title=f"Histogram: {chart_col}")
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.warning(f"Cannot generate chart for column '{chart_col}': {e}")
+
+# ------------------------ EDITABLE SHEETS WITH AGGRID ------------------------
+def editable_aggrid(df, key_prefix="uat"):
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_default_column(editable=True, resizable=True, filter=True, sortable=True)
+    gb.configure_grid_options(enableRangeSelection=True, rowSelection='multiple')
+    gb.configure_side_bar()
+    gridOptions = gb.build()
+    
     grid_response = AgGrid(
-        df_main,
-        gridOptions=grid_options,
-        editable=True,
-        height=500,
+        df,
+        gridOptions=gridOptions,
+        height=400,
         width='100%',
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        update_mode=GridUpdateMode.MODEL_CHANGED
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        fit_columns_on_grid_load=True,
+        enable_enterprise_modules=True,
+        allow_unsafe_jscode=True,
+        theme='light'
     )
-    edited_main = grid_response['data']
+    return grid_response['data']
 
-    if st.button("💾 Save UAT Changes"):
+if page == "📋 UAT Issues (Editable)":
+    st.header("📋 Edit UAT Issues (AgGrid)")
+    
+    # Sticky Save button
+    st.markdown(
+        """
+        <style>
+        .sticky-save {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: white;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+    save_col = st.container()
+    with save_col:
+        st.markdown('<div class="sticky-save">', unsafe_allow_html=True)
+        save_clicked = st.button("💾 Save Changes")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    edited_main = editable_aggrid(df_main)
+
+    # Media upload
+    for idx in edited_main.index:
+        img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"img_{idx}")
+        vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"vid_{idx}")
+        if img_file:
+            path = os.path.join(MEDIA_FOLDER, img_file.name)
+            with open(path,"wb") as f:
+                f.write(img_file.getbuffer())
+            current_imgs = str(edited_main.at[idx,"image"]) if pd.notna(edited_main.at[idx,"image"]) else ""
+            imgs = list(set(current_imgs.split("|") + [img_file.name]))
+            edited_main.at[idx,"image"] = "|".join([i for i in imgs if i])
+        if vid_file:
+            path = os.path.join(MEDIA_FOLDER, vid_file.name)
+            with open(path,"wb") as f:
+                f.write(vid_file.getbuffer())
+            current_vids = str(edited_main.at[idx,"video"]) if pd.notna(edited_main.at[idx,"video"]) else ""
+            vids = list(set(current_vids.split("|") + [vid_file.name]))
+            edited_main.at[idx,"video"] = "|".join([v for v in vids if v])
+
+    if save_clicked:
         save_excel(edited_main, df_arch)
         st.success("UAT Issues saved successfully!")
+        st.download_button("⬇ Download UAT Excel", data=open(EXCEL_PATH,"rb").read(), file_name="uat_issues_updated.xlsx")
 
-# ------------------------ ARCHITECTURE ISSUES ------------------------
 elif page == "🏗️ Architecture Issues (Editable)":
-    st.header("🏗️ Edit Architecture Issues")
+    st.header("🏗️ Edit Architecture Issues (AgGrid)")
 
-    gb = GridOptionsBuilder.from_dataframe(df_arch)
-    gb.configure_default_column(editable=True, filter=True, sortable=True)
-    gb.configure_selection('single')
-    grid_options = gb.build()
-
-    grid_response = AgGrid(
-        df_arch,
-        gridOptions=grid_options,
-        editable=True,
-        height=500,
-        width='100%',
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        update_mode=GridUpdateMode.MODEL_CHANGED
+    # Sticky Save button
+    st.markdown(
+        """
+        <style>
+        .sticky-save {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background-color: white;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        </style>
+        """, unsafe_allow_html=True
     )
-    edited_arch = grid_response['data']
+    save_col = st.container()
+    with save_col:
+        st.markdown('<div class="sticky-save">', unsafe_allow_html=True)
+        save_clicked = st.button("💾 Save Changes")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    if st.button("💾 Save Architecture Changes"):
+    edited_arch = editable_aggrid(df_arch, key_prefix="arch")
+
+    # Media upload
+    for idx in edited_arch.index:
+        img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"arch_img_{idx}")
+        vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"arch_vid_{idx}")
+        if img_file:
+            path = os.path.join(MEDIA_FOLDER, img_file.name)
+            with open(path,"wb") as f:
+                f.write(img_file.getbuffer())
+            current_imgs = str(edited_arch.at[idx,"image"]) if pd.notna(edited_arch.at[idx,"image"]) else ""
+            imgs = list(set(current_imgs.split("|") + [img_file.name]))
+            edited_arch.at[idx,"image"] = "|".join([i for i in imgs if i])
+        if vid_file:
+            path = os.path.join(MEDIA_FOLDER, vid_file.name)
+            with open(path,"wb") as f:
+                f.write(vid_file.getbuffer())
+            current_vids = str(edited_arch.at[idx,"video"]) if pd.notna(edited_arch.at[idx,"video"]) else ""
+            vids = list(set(current_vids.split("|") + [vid_file.name]))
+            edited_arch.at[idx,"video"] = "|".join([v for v in vids if v])
+
+    if save_clicked:
         save_excel(df_main, edited_arch)
         st.success("Architecture Issues saved successfully!")
+        st.download_button("⬇ Download Architecture Excel", data=open(EXCEL_PATH,"rb").read(), file_name="architecture_issues_updated.xlsx")
 
 # ------------------------ USER FEEDBACK ------------------------
 elif page == "✉️ User Feedback":
     st.header("✉️ User Feedback")
     
-    # Feedback submission form
+    # Feedback submission form (same as before)
     with st.form("feedback_form"):
         name = st.text_input("Name")
         email = st.text_input("Email")
         feedback = st.text_area("Feedback")
         submitted = st.form_submit_button("Submit")
         if submitted:
-            df_feedback = pd.concat([df_feedback, pd.DataFrame([{"Name": name, "Email": email, "Feedback": feedback, "Date": pd.Timestamp.now()}])], ignore_index=True)
+            df_feedback = df_feedback.append({
+                "Name": name,
+                "Email": email,
+                "Feedback": feedback,
+                "Date": pd.Timestamp.now()
+            }, ignore_index=True)
             save_feedback(df_feedback)
             st.success("Feedback saved successfully!")
 
+    # Editable table for previously submitted feedback
     st.subheader("Edit Submitted Feedback")
-    gb = GridOptionsBuilder.from_dataframe(df_feedback)
-    gb.configure_default_column(editable=True, filter=True, sortable=True)
-    gb.configure_selection('single')
-    grid_options = gb.build()
-
-    grid_response = AgGrid(
-        df_feedback,
-        gridOptions=grid_options,
-        editable=True,
-        height=500,
-        width='100%',
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        update_mode=GridUpdateMode.MODEL_CHANGED
-    )
-    edited_feedback = grid_response['data']
-
+    edited_feedback = st.experimental_data_editor(df_feedback, num_rows="dynamic", use_container_width=True)
+    
+    # Save button
     if st.button("💾 Save Feedback Changes"):
         save_feedback(edited_feedback)
         st.success("Feedback edits saved successfully!")
+
+    # Download feedback Excel
+    st.download_button("⬇ Download Feedback Excel", data=open(FEEDBACK_PATH, "rb").read(), file_name="user_feedback.xlsx")
