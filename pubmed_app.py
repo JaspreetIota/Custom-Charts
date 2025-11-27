@@ -72,7 +72,7 @@ if page == "📊 Dashboard":
         type_options = df["Type"].dropna().unique().tolist() if "Type" in df.columns else []
         selected_types = st.multiselect("Filter by Type", type_options, default=type_options)
         client_options = [c for c in CLIENT_COLUMNS if c in df.columns]
-        selected_clients = st.multiselect("Filter by Resolved Clients", client_options, default=client_options)
+        selected_clients = st.multiselect("Filter by Resolved Clients", client_options, default=[])
 
         if selected_types:
             df = df[df["Type"].isin(selected_types)]
