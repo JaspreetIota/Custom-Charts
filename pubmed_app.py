@@ -3,7 +3,6 @@ import pandas as pd
 import os
 from io import BytesIO
 import plotly.express as px
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 EXCEL_PATH = "uat_issues.xlsx"
 MEDIA_FOLDER = "media"
@@ -148,30 +147,10 @@ if page == "📊 Dashboard":
         except Exception as e:
             st.warning(f"Cannot generate chart for column '{chart_col}': {e}")
 
-# ------------------------ EDITABLE SHEETS WITH AGGRID ------------------------
-def editable_aggrid(df, key_prefix="uat"):
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_default_column(editable=True, resizable=True, filter=True, sortable=True)
-    gb.configure_grid_options(enableRangeSelection=True, rowSelection='multiple')
-    gb.configure_side_bar()
-    gridOptions = gb.build()
-    
-    grid_response = AgGrid(
-    df,
-    gridOptions=gridOptions,
-    height=400,
-    width='100%',
-    data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-    update_mode=GridUpdateMode.MODEL_CHANGED,
-    fit_columns_on_grid_load=True,
-    allow_unsafe_jscode=True,
-    theme='light'
-    )
-    return grid_response['data']
+# ------------------------ EDITABLE SHEETS WITH SAVE BUTTON ------------------------
+elif page == "📋 UAT Issues (Editable)":
+    st.header("📋 Edit UAT Issues")
 
-if page == "📋 UAT Issues (Editable)":
-    st.header("📋 Edit UAT Issues (AgGrid)")
-    
     # Sticky Save button
     st.markdown(
         """
@@ -187,15 +166,16 @@ if page == "📋 UAT Issues (Editable)":
         </style>
         """, unsafe_allow_html=True
     )
+
     save_col = st.container()
     with save_col:
         st.markdown('<div class="sticky-save">', unsafe_allow_html=True)
         save_clicked = st.button("💾 Save Changes")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    edited_main = editable_aggrid(df_main)
+    edited_main = st.experimental_data_editor(df_main, num_rows="dynamic", use_container_width=True)
 
-    # Media upload
+    # Media upload for each row
     for idx in edited_main.index:
         img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"img_{idx}")
         vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"vid_{idx}")
@@ -217,10 +197,9 @@ if page == "📋 UAT Issues (Editable)":
     if save_clicked:
         save_excel(edited_main, df_arch)
         st.success("UAT Issues saved successfully!")
-        st.download_button("⬇ Download UAT Excel", data=open(EXCEL_PATH,"rb").read(), file_name="uat_issues_updated.xlsx")
 
 elif page == "🏗️ Architecture Issues (Editable)":
-    st.header("🏗️ Edit Architecture Issues (AgGrid)")
+    st.header("🏗️ Edit Architecture Issues")
 
     # Sticky Save button
     st.markdown(
@@ -237,15 +216,16 @@ elif page == "🏗️ Architecture Issues (Editable)":
         </style>
         """, unsafe_allow_html=True
     )
+
     save_col = st.container()
     with save_col:
         st.markdown('<div class="sticky-save">', unsafe_allow_html=True)
         save_clicked = st.button("💾 Save Changes")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    edited_arch = editable_aggrid(df_arch, key_prefix="arch")
+    edited_arch = st.experimental_data_editor(df_arch, num_rows="dynamic", use_container_width=True)
 
-    # Media upload
+    # Media upload for each row
     for idx in edited_arch.index:
         img_file = st.file_uploader(f"Upload Image for row {idx+1}", type=["png","jpg","jpeg"], key=f"arch_img_{idx}")
         vid_file = st.file_uploader(f"Upload Video for row {idx+1}", type=["mp4","mov"], key=f"arch_vid_{idx}")
@@ -267,7 +247,6 @@ elif page == "🏗️ Architecture Issues (Editable)":
     if save_clicked:
         save_excel(df_main, edited_arch)
         st.success("Architecture Issues saved successfully!")
-        st.download_button("⬇ Download Architecture Excel", data=open(EXCEL_PATH,"rb").read(), file_name="architecture_issues_updated.xlsx")
 
 # ------------------------ USER FEEDBACK ------------------------
 elif page == "✉️ User Feedback":
