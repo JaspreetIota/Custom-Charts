@@ -2,183 +2,102 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from streamlit_echarts import st_echarts
+import json
+import os
 
-st.set_page_config(page_title="Custom ECharts Dashboard", layout="wide")
-st.title("Superset-Style ECharts in Streamlit")
-st.write("Upload an Excel file and create interactive charts with many ECharts types.")
+st.title("Custom Dashboard Builder")
 
-# --- Upload Excel ---
-uploaded = st.file_uploader("Upload Excel File", type=["xlsx", "csv"])
-
+# --- Upload dataset ---
+uploaded = st.file_uploader("Upload Excel/CSV", type=["xlsx", "csv"])
 if uploaded:
-    # Detect Excel or CSV
     if uploaded.name.endswith(".csv"):
         df = pd.read_csv(uploaded)
     else:
         df = pd.read_excel(uploaded)
 
+    df = df.replace([np.nan, np.inf, -np.inf], None)
+    columns = df.columns.tolist()
     st.write("### Data Preview", df)
 
-    # Replace invalid JSON values
-    df = df.replace([np.nan, np.inf, -np.inf], None)
+    # --- Dashboard state ---
+    if "dashboard" not in st.session_state:
+        st.session_state.dashboard = []
 
-    columns = df.columns.tolist()
+    # --- Add new chart ---
+    with st.expander("Add New Chart"):
+        x_axis = st.selectbox("X-axis", options=columns, key="new_x")
+        y_axis = st.selectbox("Y-axis (numeric or <count>)", options=["<count>"] + columns, key="new_y")
+        chart_type = st.selectbox(
+            "Chart Type",
+            ["Bar", "Stacked Bar", "Horizontal Bar", "Line", "Area", "Stacked Area", "Pie", "Donut", "Scatter", "Radar", "Funnel", "Gauge", "Treemap", "Word Cloud"],
+            key="new_type"
+        )
+        width = st.slider("Width (columns)", 2, 12, 6, key="new_width")
+        height = st.slider("Height (pixels)", 200, 800, 400, key="new_height")
 
-    if len(columns) < 1:
-        st.error("No columns found in your file.")
-        st.stop()
+        if st.button("Add Chart"):
+            chart_id = f"chart{len(st.session_state.dashboard)+1}"
+            st.session_state.dashboard.append({
+                "id": chart_id,
+                "x_axis": x_axis,
+                "y_axis": y_axis,
+                "type": chart_type,
+                "width": width,
+                "height": height
+            })
 
-    # --- User selects columns ---
-    x_axis = st.selectbox("X-axis Column (categories)", options=columns)
-    y_axis = st.selectbox(
-        "Y-axis Column (numeric or category, optional for count)",
-        options=["<count>"] + columns
-    )
+    # --- Save/Load Dashboard ---
+    save_name = st.text_input("Dashboard name to save/load", "")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Save Dashboard") and save_name:
+            os.makedirs("dashboards", exist_ok=True)
+            with open(f"dashboards/{save_name}.json", "w") as f:
+                json.dump(st.session_state.dashboard, f)
+            st.success(f"Dashboard '{save_name}' saved!")
+    with col2:
+        if st.button("Load Dashboard") and save_name:
+            try:
+                with open(f"dashboards/{save_name}.json") as f:
+                    st.session_state.dashboard = json.load(f)
+                st.success(f"Dashboard '{save_name}' loaded!")
+            except:
+                st.error("Dashboard not found.")
 
-    # --- Chart type selection ---
-    chart_type = st.selectbox(
-        "Chart Type",
-        [
-            "Bar",
-            "Stacked Bar",
-            "Horizontal Bar",
-            "Line",
-            "Area",
-            "Stacked Area",
-            "Pie",
-            "Donut",
-            "Scatter",
-            "Radar",
-            "Funnel",
-            "Gauge",
-            "Treemap",
-            "Word Cloud"
-        ]
-    )
+    st.write("---")
+    st.subheader("Your Dashboard")
 
-    # --- Prepare data ---
-    x_data = df[x_axis].astype(str)
+    # --- Render all charts ---
+    for i, chart in enumerate(st.session_state.dashboard):
+        cols = st.columns([chart["width"], 12-chart["width"]])
+        with cols[0]:
+            # Prepare chart data
+            x_data = df[chart["x_axis"]].astype(str)
+            if chart["y_axis"] == "<count>":
+                counted = x_data.value_counts().reset_index()
+                counted.columns = [chart["x_axis"], "count"]
+                x_list = counted[chart["x_axis"]].tolist()
+                y_list = counted["count"].tolist()
+            else:
+                if pd.api.types.is_numeric_dtype(df[chart["y_axis"]]):
+                    y_list = df[chart["y_axis"]].replace([np.nan, np.inf, -np.inf], None).tolist()
+                    x_list = x_data.tolist()
+                else:
+                    counted = df[chart["y_axis"]].astype(str).value_counts().reset_index()
+                    counted.columns = [chart["y_axis"], "count"]
+                    x_list = counted[chart["y_axis"]].tolist()
+                    y_list = counted["count"].tolist()
 
-    # Determine y_data
-    if y_axis == "<count>":
-        # Count occurrences of X-axis categories
-        counted = x_data.value_counts().reset_index()
-        counted.columns = [x_axis, "count"]
-        x_list = counted[x_axis].astype(str).tolist()
-        y_list = counted["count"].tolist()
-    else:
-        # Use numeric values if possible
-        if pd.api.types.is_numeric_dtype(df[y_axis]):
-            y_list = df[y_axis].replace([np.nan, np.inf, -np.inf], None).tolist()
-            x_list = x_data.tolist()
-        else:
-            # Count occurrences of Y categories
-            counted = df[y_axis].astype(str).value_counts().reset_index()
-            counted.columns = [y_axis, "count"]
-            x_list = counted[y_axis].tolist()
-            y_list = counted["count"].tolist()
+            # Build chart options
+            options = {}
+            if chart["type"] == "Bar":
+                options = {"tooltip":{"trigger":"axis"}, "xAxis":{"type":"category","data":x_list}, "yAxis":{"type":"value"}, "series":[{"data":y_list,"type":"bar"}]}
+            elif chart["type"] == "Line":
+                options = {"tooltip":{"trigger":"axis"}, "xAxis":{"type":"category","data":x_list}, "yAxis":{"type":"value"}, "series":[{"data":y_list,"type":"line"}]}
+            elif chart["type"] == "Pie":
+                options = {"tooltip":{"trigger":"item"}, "series":[{"type":"pie","radius":"60%","data":[{"value":v,"name":n} for n,v in zip(x_list,y_list)]}]}
+            elif chart["type"] == "Donut":
+                options = {"tooltip":{"trigger":"item"}, "series":[{"type":"pie","radius":["40%","70%"],"data":[{"value":v,"name":n} for n,v in zip(x_list,y_list)]}]}
+            # Add other types as needed here...
 
-    # --- Build ECharts options ---
-    options = {}
-
-    if chart_type == "Bar":
-        options = {
-            "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": x_list},
-            "yAxis": {"type": "value"},
-            "series": [{"data": y_list, "type": "bar"}]
-        }
-
-    elif chart_type == "Stacked Bar":
-        options = {
-            "tooltip": {"trigger": "axis"},
-            "legend": {},
-            "xAxis": {"type": "category", "data": x_list},
-            "yAxis": {"type": "value"},
-            "series": [{"type": "bar", "stack": "total", "data": y_list}]
-        }
-
-    elif chart_type == "Horizontal Bar":
-        options = {
-            "tooltip": {"trigger": "axis"},
-            "yAxis": {"type": "category", "data": x_list},
-            "xAxis": {"type": "value"},
-            "series": [{"data": y_list, "type": "bar"}]
-        }
-
-    elif chart_type == "Line":
-        options = {
-            "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": x_list},
-            "yAxis": {"type": "value"},
-            "series": [{"data": y_list, "type": "line"}]
-        }
-
-    elif chart_type == "Area":
-        options = {
-            "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": x_list},
-            "yAxis": {"type": "value"},
-            "series": [{"data": y_list, "type": "line", "areaStyle": {}}]
-        }
-
-    elif chart_type == "Stacked Area":
-        options = {
-            "tooltip": {"trigger": "axis"},
-            "legend": {},
-            "xAxis": {"type": "category", "data": x_list},
-            "yAxis": {"type": "value"},
-            "series": [{"type": "line", "areaStyle": {}, "stack": "total", "data": y_list}]
-        }
-
-    elif chart_type == "Pie":
-        options = {
-            "tooltip": {"trigger": "item"},
-            "series": [{"type": "pie", "radius": "60%", "data": [{"value": v, "name": n} for n, v in zip(x_list, y_list)]}]
-        }
-
-    elif chart_type == "Donut":
-        options = {
-            "tooltip": {"trigger": "item"},
-            "series": [{"type": "pie", "radius": ["40%", "70%"], "data": [{"value": v, "name": n} for n, v in zip(x_list, y_list)]}]
-        }
-
-    elif chart_type == "Scatter":
-        options = {
-            "xAxis": {"type": "category", "data": list(range(len(y_list)))},
-            "yAxis": {"type": "value"},
-            "series": [{"data": [[i, v] for i, v in enumerate(y_list)], "type": "scatter"}]
-        }
-
-    elif chart_type == "Radar":
-        options = {
-            "tooltip": {},
-            "radar": {
-                "indicator": [{"name": n, "max": max(y_list) if max(y_list) else 1} for n in x_list]
-            },
-            "series": [{"type": "radar", "data": [{"value": y_list, "name": "Values"}]}]
-        }
-
-    elif chart_type == "Funnel":
-        options = {
-            "tooltip": {"trigger": "item"},
-            "series": [{"type": "funnel", "data": [{"value": v, "name": n} for n, v in zip(x_list, y_list)]}]
-        }
-
-    elif chart_type == "Gauge":
-        options = {
-            "series": [{"type": "gauge", "progress": {"show": True}, "data": [{"value": y_list[0] if y_list else 0}]}]
-        }
-
-    elif chart_type == "Treemap":
-        options = {
-            "series": [{"type": "treemap", "data": [{"name": n, "value": v} for n, v in zip(x_list, y_list)]}]
-        }
-
-    elif chart_type == "Word Cloud":
-        options = {
-            "series": [{"type": "wordCloud", "shape": "circle", "data": [{"name": n, "value": v} for n, v in zip(x_list, y_list)]}]
-        }
-
-    # --- Render chart ---
-    st_echarts(options=options, height="500px")
+            st_echarts(options=options, height=chart["height"])
