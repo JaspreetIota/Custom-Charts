@@ -12,64 +12,74 @@ if uploaded:
     df = pd.read_excel(uploaded)
     st.write("### Data Preview", df)
 
-    # Clean bad values globally
+    # Clean NaN / inf values
     df = df.replace([np.nan, np.inf, -np.inf], None)
 
     columns = df.columns.tolist()
 
-    # Detect numeric columns
-    numeric_columns = df.select_dtypes(include="number").columns.tolist()
-
-    if not numeric_columns:
-        st.error("No numeric columns found in your Excel file. Please upload a file with numeric data.")
-        st.stop()
-
     x_axis = st.selectbox("X-axis Column", options=columns)
-    y_axis = st.selectbox("Y-axis Column (numeric)", options=numeric_columns)
-
-    # Validate selection
-    if x_axis not in df.columns or y_axis not in df.columns:
-        st.warning("Please select valid X and Y axis columns.")
-        st.stop()
+    y_axis = st.selectbox("Y-axis Column (optional, numeric or category)", options=["<count>"] + columns)
 
     chart_type = st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
 
-    # Prepare JSON-safe data
-    x_data = df[x_axis].astype(str).tolist()
-    y_series = df[y_axis].replace([np.nan, np.inf, -np.inf], None).tolist()
+    # ---------------------------
+    # 1️⃣ X-axis always categories
+    # ---------------------------
+    x_data = df[x_axis].astype(str)
 
-    # Bar Chart
+    # ---------------------------
+    # 2️⃣ Determine numeric Y data
+    # ---------------------------
+    if y_axis == "<count>":
+        # Count occurrences of each X category
+        counted = x_data.value_counts().reset_index()
+        counted.columns = [x_axis, "count"]
+        x_list = counted[x_axis].astype(str).tolist()
+        y_list = counted["count"].tolist()
+
+    else:
+        # If selected Y-axis exists
+        if pd.api.types.is_numeric_dtype(df[y_axis]):
+            # Use numeric values
+            y_list = df[y_axis].replace([np.nan, np.inf, -np.inf], None).tolist()
+            x_list = x_data.tolist()
+        else:
+            # Auto-count Y category values
+            counted = df[y_axis].astype(str).value_counts().reset_index()
+            counted.columns = [y_axis, "count"]
+            x_list = counted[y_axis].tolist()
+            y_list = counted["count"].tolist()
+
+    # -----------------------
+    # 3️⃣ Build ECharts options
+    # -----------------------
+
     if chart_type == "Bar":
         options = {
             "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": x_data},
+            "xAxis": {"type": "category", "data": x_list},
             "yAxis": {"type": "value"},
             "series": [{
-                "data": y_series,
-                "type": "bar"
+                "data": y_list,
+                "type": "bar",
+                "smooth": True
             }]
         }
 
-    # Line Chart
     elif chart_type == "Line":
         options = {
             "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": x_data},
+            "xAxis": {"type": "category", "data": x_list},
             "yAxis": {"type": "value"},
             "series": [{
-                "data": y_series,
-                "type": "line"
+                "data": y_list,
+                "type": "line",
+                "smooth": True
             }]
         }
 
-    # Pie Chart
     elif chart_type == "Pie":
-        pie_data = []
-        for name, val in zip(x_data, y_series):
-            pie_data.append({
-                "value": 0 if val is None else val,
-                "name": name
-            })
+        pie_data = [{"value": v, "name": n} for n, v in zip(x_list, y_list)]
 
         options = {
             "tooltip": {"trigger": "item"},
