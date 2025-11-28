@@ -6,12 +6,13 @@ import os
 from streamlit_echarts import st_echarts
 
 st.set_page_config(layout="wide")
-st.title("Flexible Multi-Chart Dashboard (Cloud Compatible)")
+st.title("Persistent Multi-Chart Dashboard Builder")
 
 # ---------------------------
-# Upload Excel/CSV
+# File upload for new dataset
 # ---------------------------
-uploaded_file = st.file_uploader("Upload Excel/CSV", type=["xlsx","csv"])
+uploaded_file = st.file_uploader("Upload Excel/CSV", type=["xlsx","csv"], key="file_upload")
+
 if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
@@ -21,38 +22,50 @@ if uploaded_file:
     df = df.replace([np.nan, np.inf, -np.inf], None)
     st.subheader("Data Preview")
     st.dataframe(df)
-
     columns = df.columns.tolist()
 
     # ---------------------------
-    # Dashboard management
+    # Persistent dashboards storage
     # ---------------------------
-    dashboard_name = st.text_input("Dashboard Name", value="default_dashboard")
-
-    # Load saved dashboards
     dashboards_file = "dashboards.json"
-    try:
-        with open(dashboards_file, "r") as f:
-            dashboards = json.load(f)
-    except FileNotFoundError:
-        dashboards = {}
+    if not os.path.exists(dashboards_file):
+        with open(dashboards_file, "w") as f:
+            json.dump({}, f)
 
-    if st.button("Save Dashboard"):
-        dashboards[dashboard_name] = st.session_state.get("dashboard", [])
+    with open(dashboards_file, "r") as f:
+        dashboards = json.load(f)
+
+    # ---------------------------
+    # Select or create dashboard
+    # ---------------------------
+    st.sidebar.subheader("Dashboards")
+    dashboard_name = st.sidebar.text_input("Dashboard Name", value="default_dashboard")
+
+    # Delete a dashboard
+    if st.sidebar.button("Delete Dashboard") and dashboard_name in dashboards:
+        del dashboards[dashboard_name]
         with open(dashboards_file, "w") as f:
             json.dump(dashboards, f)
-        st.success(f"Dashboard '{dashboard_name}' saved!")
-
-    if dashboards:
-        st.sidebar.subheader("Saved Dashboards")
-        selected_dashboard = st.sidebar.selectbox("Select Dashboard", list(dashboards.keys()))
-        if selected_dashboard and st.sidebar.button("Load Dashboard"):
-            st.session_state.dashboard = dashboards[selected_dashboard]
-            st.sidebar.success(f"Loaded '{selected_dashboard}'")
-
-    # Initialize session dashboard
-    if "dashboard" not in st.session_state:
+        st.sidebar.success(f"Dashboard '{dashboard_name}' deleted!")
         st.session_state.dashboard = []
+
+    # Load dashboard into session state
+    if dashboard_name not in st.session_state:
+        st.session_state.dashboard = dashboards.get(dashboard_name, [])
+
+    if st.sidebar.button("Save Dashboard"):
+        dashboards[dashboard_name] = st.session_state.dashboard
+        with open(dashboards_file, "w") as f:
+            json.dump(dashboards, f)
+        st.sidebar.success(f"Dashboard '{dashboard_name}' saved!")
+
+    # Show list of saved dashboards
+    if dashboards:
+        st.sidebar.subheader("Load Dashboard")
+        selected_dashboard = st.sidebar.selectbox("Select Dashboard", list(dashboards.keys()))
+        if st.sidebar.button("Load Selected Dashboard") and selected_dashboard in dashboards:
+            st.session_state.dashboard = dashboards[selected_dashboard]
+            st.sidebar.success(f"Dashboard '{selected_dashboard}' loaded!")
 
     # ---------------------------
     # Add new chart
@@ -69,7 +82,7 @@ if uploaded_file:
     width = st.slider("Width (columns)", 2, 12, 6)
     height = st.slider("Height (pixels)", 200, 800, 400)
 
-    if st.button("Add Chart to Dashboard"):
+    if st.button("Add Chart"):
         st.session_state.dashboard.append({
             "x_axis": x_axis,
             "y_axis": y_axis,
@@ -90,7 +103,12 @@ if uploaded_file:
         cols = st.columns(charts_per_row)
         for j, chart in enumerate(st.session_state.dashboard[i:i+charts_per_row]):
             with cols[j]:
-                # Prepare data
+                # Delete individual chart
+                if st.button(f"Delete Chart {i+j+1}"):
+                    st.session_state.dashboard.pop(i+j)
+                    st.experimental_rerun()
+
+                # Prepare chart data
                 x_data = df[chart["x_axis"]].astype(str)
                 if chart["y_axis"] == "<count>":
                     counted = x_data.value_counts().reset_index()
@@ -131,6 +149,5 @@ if uploaded_file:
                     options = {"tooltip":{}, "radar":{"indicator":[{"name":str(n),"max":max(y_list)+5} for n in x_list]}, "series":[{"type":"radar","data":[{"value":y_list,"name":"Count"}]}]}
                 elif chart["type"] == "Funnel":
                     options = {"tooltip":{"trigger":"item"}, "series":[{"type":"funnel","data":[{"value":v,"name":n} for n,v in zip(x_list,y_list)]}]}
-                # Gauge, Treemap, Word Cloud can be added similarly
 
                 st_echarts(options=options, height=chart["height"])
