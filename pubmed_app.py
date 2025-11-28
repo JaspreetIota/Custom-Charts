@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from streamlit_echarts import st_echarts
+import numpy as np
 
 st.title("Superset-Style ECharts in Streamlit")
 st.write("Upload an Excel file and create interactive charts with ECharts.")
@@ -11,8 +12,8 @@ if uploaded:
     df = pd.read_excel(uploaded)
     st.write("### Data Preview", df)
 
-    # Clean NaN globally for safety
-    df = df.replace({pd.NA: None}).where(pd.notna(df), None)
+    # Convert all NaN, NaT, None, inf → None (valid JSON)
+    df = df.replace([np.nan, np.inf, -np.inf], None)
 
     columns = df.columns.tolist()
     x_axis = st.selectbox("X-axis Column", options=columns)
@@ -20,11 +21,13 @@ if uploaded:
 
     chart_type = st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
 
-    # Prepare cleaned data
-    x_data = df[x_axis].astype(str).tolist()
-    y_data = df[y_axis].where(pd.notna(df[y_axis]), None).tolist()
+    # Clean y-axis values
+    y_data = df[y_axis].replace([np.nan, np.inf, -np.inf], None).tolist()
 
-    # Build ECharts options based on type
+    # Prepare x data as strings (safe)
+    x_data = df[x_axis].astype(str).tolist()
+
+    # BAR
     if chart_type == "Bar":
         options = {
             "tooltip": {"trigger": "axis"},
@@ -33,10 +36,10 @@ if uploaded:
             "series": [{
                 "data": y_data,
                 "type": "bar",
-                "smooth": True,
             }]
         }
 
+    # LINE
     elif chart_type == "Line":
         options = {
             "tooltip": {"trigger": "axis"},
@@ -45,15 +48,16 @@ if uploaded:
             "series": [{
                 "data": y_data,
                 "type": "line",
-                "smooth": True,
             }]
         }
 
+    # PIE (special care)
     elif chart_type == "Pie":
-        pie_data = [
-            {"value": (v if v is not None else 0), "name": str(n)}
-            for n, v in zip(df[x_axis], y_data)
-        ]
+        pie_data = []
+        for name, val in zip(x_data, y_data):
+            if val is None:       # prevent NaN in pie charts
+                val = 0
+            pie_data.append({"value": val, "name": name})
 
         options = {
             "tooltip": {"trigger": "item"},
