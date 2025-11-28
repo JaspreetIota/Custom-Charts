@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from streamlit_echarts import st_echarts
 import numpy as np
+from streamlit_echarts import st_echarts
 
 st.title("Superset-Style ECharts in Streamlit")
 st.write("Upload an Excel file and create interactive charts with ECharts.")
@@ -12,59 +12,71 @@ if uploaded:
     df = pd.read_excel(uploaded)
     st.write("### Data Preview", df)
 
-    # Convert all NaN, NaT, None, inf → None (valid JSON)
+    # Clean bad values globally
     df = df.replace([np.nan, np.inf, -np.inf], None)
 
     columns = df.columns.tolist()
+
+    # Detect numeric columns
+    numeric_columns = df.select_dtypes(include="number").columns.tolist()
+
+    if not numeric_columns:
+        st.error("No numeric columns found in your Excel file. Please upload a file with numeric data.")
+        st.stop()
+
     x_axis = st.selectbox("X-axis Column", options=columns)
-    y_axis = st.selectbox("Y-axis Column (numeric)", options=df.select_dtypes(include="number").columns)
+    y_axis = st.selectbox("Y-axis Column (numeric)", options=numeric_columns)
+
+    # Validate selection
+    if x_axis not in df.columns or y_axis not in df.columns:
+        st.warning("Please select valid X and Y axis columns.")
+        st.stop()
 
     chart_type = st.selectbox("Chart Type", ["Bar", "Line", "Pie"])
 
-    # Clean y-axis values
-    y_data = df[y_axis].replace([np.nan, np.inf, -np.inf], None).tolist()
-
-    # Prepare x data as strings (safe)
+    # Prepare JSON-safe data
     x_data = df[x_axis].astype(str).tolist()
+    y_series = df[y_axis].replace([np.nan, np.inf, -np.inf], None).tolist()
 
-    # BAR
+    # Bar Chart
     if chart_type == "Bar":
         options = {
             "tooltip": {"trigger": "axis"},
             "xAxis": {"type": "category", "data": x_data},
             "yAxis": {"type": "value"},
             "series": [{
-                "data": y_data,
-                "type": "bar",
+                "data": y_series,
+                "type": "bar"
             }]
         }
 
-    # LINE
+    # Line Chart
     elif chart_type == "Line":
         options = {
             "tooltip": {"trigger": "axis"},
             "xAxis": {"type": "category", "data": x_data},
             "yAxis": {"type": "value"},
             "series": [{
-                "data": y_data,
-                "type": "line",
+                "data": y_series,
+                "type": "line"
             }]
         }
 
-    # PIE (special care)
+    # Pie Chart
     elif chart_type == "Pie":
         pie_data = []
-        for name, val in zip(x_data, y_data):
-            if val is None:       # prevent NaN in pie charts
-                val = 0
-            pie_data.append({"value": val, "name": name})
+        for name, val in zip(x_data, y_series):
+            pie_data.append({
+                "value": 0 if val is None else val,
+                "name": name
+            })
 
         options = {
             "tooltip": {"trigger": "item"},
             "series": [{
                 "type": "pie",
                 "radius": "60%",
-                "data": pie_data,
+                "data": pie_data
             }]
         }
 
